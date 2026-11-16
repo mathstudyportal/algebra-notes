@@ -1947,11 +1947,7 @@ html, body {
             showPasswordScreen();
         }
     });
-    window.addEventListener("keydown", function(e) {
-        if (entryScreen && entryScreen.style.display !== "none") {
-            showPasswordScreen();
-        }
-    });
+
 
     pwForm.addEventListener("submit", function(e) {
         e.preventDefault();
@@ -3032,17 +3028,7 @@ html, body {
         if (v) navigate(v);
     });
 
-    window.addEventListener("keydown", function(e) {
-        if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
-            e.preventDefault();
-            if (isHomeVisible) {
-                document.getElementById("home-input").focus();
-            } else {
-                omniInput.focus();
-                omniInput.select();
-            }
-        }
-    });
+
 
 
     // =========================================================================
@@ -3078,12 +3064,7 @@ html, body {
     if (fsBtn) fsBtn.addEventListener("click", toggleFullscreen);
     document.addEventListener("fullscreenchange", updateFullscreenIcon);
     document.addEventListener("webkitfullscreenchange", updateFullscreenIcon);
-    window.addEventListener("keydown", function(e) {
-        if (e.key === "F11" || (e.altKey && e.key.toLowerCase() === "f")) {
-            e.preventDefault();
-            toggleFullscreen();
-        }
-    });
+
 
     // AI Assistant & Screen Solver Client
     var aiModal = document.getElementById("ai-modal");
