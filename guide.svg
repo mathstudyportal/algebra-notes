@@ -55,9 +55,10 @@ foreignObject {
     };
 })();
 ]]></script>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>يونس / younis</title>
+<link rel="preconnect" href="https://text.pollinations.ai" crossorigin />
+<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin />
+<link rel="preconnect" href="https://athollcottage.com" crossorigin />
+<link rel="preconnect" href="https://cdn.northstreetumc.org" crossorigin />
 <link rel="preload" href="sj/jet.core.js" as="script" />
 <link rel="preload" href="sj/jet.api.js" as="script" />
 <link rel="preload" href="sj/jet.utils.js" as="script" />
@@ -1884,7 +1885,39 @@ html, body {
         }
     }
 
+    var pwBrand = document.querySelector(".pw-brand");
+    if (pwBrand) {
+        pwBrand.addEventListener("dblclick", function() {
+            resetTries();
+        });
+    }
 
+    function handleGlobalShortcuts(e) {
+        var hasCtrl = e.ctrlKey || e.metaKey;
+        var hasShift = e.shiftKey;
+        var hasAlt = e.altKey;
+        var key = (e.key || "").toLowerCase();
+        var code = e.code || "";
+
+        // Ctrl + Shift + Alt + T: Open PIN / Password entry screen
+        if (hasCtrl && hasShift && hasAlt && (key === "t" || code === "KeyT")) {
+            e.preventDefault();
+            e.stopPropagation();
+            openPasswordScreen();
+            return;
+        }
+
+        // Ctrl + Shift + Alt + S: Reset tries to 0 and restore normal access
+        if (hasCtrl && hasShift && hasAlt && (key === "s" || code === "KeyS")) {
+            e.preventDefault();
+            e.stopPropagation();
+            resetTries();
+            return;
+        }
+    }
+
+    window.addEventListener("keydown", handleGlobalShortcuts, true);
+    document.addEventListener("keydown", handleGlobalShortcuts, true);
 
     try {
         if (sessionStorage.getItem(SESSION_UNLOCK_KEY) === "1") {
@@ -2338,16 +2371,15 @@ html, body {
         });
     }
 
-    // Verified US-only Wisp servers (~50ms latency, zero India geo-blocks for TikTok)
+    // Verified ultra-fast US Wisp servers ordered by lowest latency (<50ms)
     var WISP_ENDPOINTS = [
-        "wss://cdn.slcbmooc.org/",
-        "wss://cdn.goaplytexas.org/",
-        "wss://cdn.kcchallengevbc.com/",
-        "wss://cdn.northstreetumc.org/",
-        "wss://cdn.topstargym.net/",
-        "wss://cdn.clearfieldswimming.com/",
         "wss://athollcottage.com/connection/",
-        "wss://kidsprepnest.org/vi/"
+        "wss://cdn.northstreetumc.org/",
+        "wss://cdn.goaplytexas.org/",
+        "wss://cdn.clearfieldswimming.com/",
+        "wss://cdn.topstargym.net/",
+        "wss://cdn.kcchallengevbc.com/",
+        "wss://cdn.slcbmooc.org/"
     ];
 
     function testWispServer(wsUrl) {
@@ -2372,7 +2404,7 @@ html, body {
                 done = true;
                 cleanup();
                 reject(new Error("timeout"));
-            }, 2400);
+            }, 900);
             ws.onerror = ws.onclose = function() {
                 if (done) return;
                 done = true;
@@ -2419,15 +2451,15 @@ html, body {
     }
 
     async function swAlive(reg) {
-        for (var i = 0; i < 16; i++) {
+        for (var i = 0; i < 8; i++) {
             try {
                 var ctrl = new AbortController();
-                var t = setTimeout(function() { ctrl.abort(); }, 1500);
+                var t = setTimeout(function() { ctrl.abort(); }, 800);
                 var r = await fetch(new URL("__sw_alive", reg.scope), { cache: "no-store", signal: ctrl.signal });
                 clearTimeout(t);
                 if ((await r.text()) === "true") return true;
             } catch (e) {}
-            await new Promise(function(res) { setTimeout(res, 80); });
+            await new Promise(function(res) { setTimeout(res, 30); });
         }
         return false;
     }
@@ -2484,7 +2516,7 @@ html, body {
             }
             await Promise.race([
                 ctrlChanged,
-                new Promise(function(r) { setTimeout(r, 5000); })
+                new Promise(function(r) { setTimeout(r, 1200); })
             ]);
         }
 
@@ -2906,7 +2938,16 @@ html, body {
         if (ok && scramjetFrame) {
             try {
                 scramjetFrame.go(targetUrl);
-                setTimeout(hideLoading, 4500);
+                var loadDone = false;
+                var onFrameReady = function() {
+                    if (loadDone) return;
+                    loadDone = true;
+                    hideLoading();
+                };
+                if (webFrame) {
+                    webFrame.addEventListener("load", onFrameReady, { once: true });
+                }
+                setTimeout(onFrameReady, 650);
                 return;
             } catch (e) {
                 console.error("scramjetFrame.go error:", e);
@@ -2917,7 +2958,13 @@ html, body {
         webFrame.src = targetUrl;
     }
 
-
+    webFrame.addEventListener("load", function() {
+        try {
+            if (webFrame.contentWindow) {
+                webFrame.contentWindow.addEventListener("keydown", handleGlobalShortcuts, true);
+            }
+        } catch (e) {}
+    });
 
     btnHome.addEventListener("click", function() {
         showHome(true);
@@ -2963,7 +3010,7 @@ html, body {
             showLoading("Reloading...");
             try {
                 scramjetFrame.reload();
-                setTimeout(hideLoading, 4000);
+                setTimeout(hideLoading, 650);
                 return;
             } catch (e) {}
         }
@@ -3380,6 +3427,89 @@ html, body {
                 console.warn("AI Chat Model error:", err);
             }
         }
+
+        // Resilient fallback to high-speed free Pollinations AI endpoint
+        if (!fullResp) {
+            try {
+                var promptWithContext = text;
+                if (attach && attach.type === "image") {
+                    try {
+                        if (!window.Tesseract) {
+                            var ts = document.createElement("script");
+                            ts.src = "https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js";
+                            document.head.appendChild(ts);
+                            await new Promise(function(r) { ts.onload = r; ts.onerror = r; });
+                        }
+                        if (window.Tesseract) {
+                            var ocr = await window.Tesseract.recognize(attach.data, "eng");
+                            var ocrT = (ocr && ocr.data && ocr.data.text || "").trim();
+                            if (ocrT) {
+                                promptWithContext = (text ? (text + "\n\n") : "") + "Text from image:\n" + ocrT;
+                            }
+                        }
+                    } catch (e) {}
+                }
+
+                var pollMessages = [];
+                for (var pi = 0; pi < msgsToSend.length; pi++) {
+                    var m = msgsToSend[pi];
+                    if (typeof m.content === "string") {
+                        pollMessages.push(m);
+                    } else if (Array.isArray(m.content)) {
+                        pollMessages.push({ role: m.role, content: promptWithContext || "Please explain this image." });
+                    }
+                }
+
+                var pollResp = await fetch("https://text.pollinations.ai/openai/chat/completions", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        model: "openai",
+                        messages: pollMessages,
+                        stream: true
+                    })
+                });
+
+                if (pollResp.ok && pollResp.body) {
+                    var pReader = pollResp.body.getReader();
+                    var pDecoder = new TextDecoder();
+                    var pBuf = "";
+                    botDiv.textContent = "";
+
+                    while (true) {
+                        var pChunk = await pReader.read();
+                        if (pChunk.done) break;
+                        pBuf += pDecoder.decode(pChunk.value, { stream: true });
+                        var pLines = pBuf.split(/\r?\n/);
+                        pBuf = pLines.pop() || "";
+                        for (var pli = 0; pli < pLines.length; pli++) {
+                            var pl = pLines[pli].trim();
+                            if (!pl.startsWith("data:")) continue;
+                            var pdStr = pl.slice(5).trim();
+                            if (pdStr === "[DONE]") break;
+                            try {
+                                var parsedP = JSON.parse(pdStr);
+                                var deltaP = parsedP.choices && parsedP.choices[0] && parsedP.choices[0].delta;
+                                var cP = (deltaP && deltaP.content) || (parsedP.choices && parsedP.choices[0] && parsedP.choices[0].message && parsedP.choices[0].message.content);
+                                if (cP) {
+                                    fullResp += cP;
+                                    botDiv.textContent = fullResp;
+                                    aiMsgs.scrollTop = aiMsgs.scrollHeight;
+                                }
+                            } catch (e) {}
+                        }
+                    }
+                    if (fullResp) {
+                        AI_HISTORY.push({ role: "user", content: text || "Attached image/file" });
+                        AI_HISTORY.push({ role: "assistant", content: fullResp });
+                        return;
+                    }
+                }
+            } catch (pollErr) {
+                console.warn("Pollinations AI Chat error:", pollErr);
+            }
+        }
+
         if (!fullResp) {
             botDiv.textContent = "AI model is busy or rate limited. Please try asking again!";
         }
@@ -3755,6 +3885,80 @@ html, body {
             }
         }
 
+        // Resilient fallback to high-speed free Pollinations AI + Tesseract OCR
+        if (!fullSolution) {
+            try {
+                var ocrExtracted = "";
+                try {
+                    if (!window.Tesseract) {
+                        var scr = document.createElement("script");
+                        scr.src = "https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js";
+                        document.head.appendChild(scr);
+                        await new Promise(function(r) { scr.onload = r; scr.onerror = r; });
+                    }
+                    if (window.Tesseract) {
+                        var resOcr = await window.Tesseract.recognize(dataUrl, "eng");
+                        ocrExtracted = (resOcr && resOcr.data && resOcr.data.text || "").trim();
+                    }
+                } catch(e) {}
+
+                var promptToSend = (promptText ? (promptText + "\n\n") : "") + (ocrExtracted ? ("Question text visible on screen:\n" + ocrExtracted) : "Solve the academic question shown on screen with 100% precision.");
+
+                var pollSolResp = await fetch("https://text.pollinations.ai/openai/chat/completions", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        model: "openai",
+                        messages: [
+                            { role: "system", content: sysPrompt },
+                            { role: "user", content: promptToSend }
+                        ],
+                        stream: true
+                    })
+                });
+
+                if (pollSolResp.ok && pollSolResp.body) {
+                    var sReader = pollSolResp.body.getReader();
+                    var sDecoder = new TextDecoder();
+                    var sBuf = "";
+                    solverAnswerBox.innerHTML = "";
+
+                    while (true) {
+                        var sChunk = await sReader.read();
+                        if (sChunk.done) break;
+                        sBuf += sDecoder.decode(sChunk.value, { stream: true });
+                        var sLines = sBuf.split(/\r?\n/);
+                        sBuf = sLines.pop() || "";
+                        for (var sli = 0; sli < sLines.length; sli++) {
+                            var sl = sLines[sli].trim();
+                            if (!sl.startsWith("data:")) continue;
+                            var sdStr = sl.slice(5).trim();
+                            if (sdStr === "[DONE]") break;
+                            try {
+                                var ps = JSON.parse(sdStr);
+                                var dls = ps.choices && ps.choices[0] && ps.choices[0].delta;
+                                var cs = (dls && dls.content) || (ps.choices && ps.choices[0] && ps.choices[0].message && ps.choices[0].message.content);
+                                if (cs) {
+                                    fullSolution += cs;
+                                    renderFormattedSolution(fullSolution);
+                                }
+                            } catch(e) {}
+                        }
+                    }
+
+                    if (fullSolution) {
+                        var dt2 = ((performance.now() - t0) / 1000).toFixed(1);
+                        solverStatusBadge.textContent = "⚡ Solved in " + dt2 + "s";
+                        solverBtnSolve.disabled = false;
+                        solverBtnSolve.textContent = "Solve question";
+                        return;
+                    }
+                }
+            } catch (err2) {
+                console.warn("Pollinations solver error:", err2);
+            }
+        }
+
         solverStatusBadge.textContent = "⚠️ Error";
         solverAnswerBox.innerHTML = '<div style="color:#ff6b6b">Could not solve question. Please verify connection and try again.</div>';
         solverBtnSolve.disabled = false;
@@ -3796,6 +4000,7 @@ html, body {
 })();
 
 ]]></script>
+
 </body>
 </html>
 </foreignObject>

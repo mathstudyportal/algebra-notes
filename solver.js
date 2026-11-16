@@ -150,7 +150,7 @@
         var userQ = (input.value || "").trim();
         var sysPrompt = 
             "You are an elite academic test solver for i-Ready, school exams, standardized tests, and math/reading quizzes.\n" +
-            "Analyze the image with meticulous precision. Read every word, diagram, number, and question choice.\n" +
+            "Analyze the image and question with meticulous precision. Read every word, diagram, number, and question choice.\n" +
             "FORMAT:\n" +
             "1. Output the final correct answer in bold at the very top: '**ANSWER: [Option Letter or Value]**' (e.g. '**ANSWER: B**' or '**ANSWER: 42**').\n" +
             "2. Below it, provide a concise 1-2 sentence proof/verification.\n" +
@@ -158,6 +158,23 @@
 
         var t0 = performance.now();
         var full = "";
+
+        // Dynamic OCR helper if vision fallback is needed
+        var extractedOcrText = "";
+        try {
+            if (!window.Tesseract) {
+                var ocrScript = document.createElement("script");
+                ocrScript.src = "https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js";
+                document.head.appendChild(ocrScript);
+                await new Promise(function(res) { ocrScript.onload = res; ocrScript.onerror = res; });
+            }
+            if (window.Tesseract) {
+                var ocrRes = await window.Tesseract.recognize(cv, "eng");
+                extractedOcrText = (ocrRes && ocrRes.data && ocrRes.data.text || "").trim();
+            }
+        } catch(e) {}
+
+        var combinedQuestion = (userQ ? (userQ + "\n\n") : "") + (extractedOcrText ? ("Extracted text from test screen:\n" + extractedOcrText) : "Solve the academic question shown on screen with exact precision.");
 
         for (var i = 0; i < VISION_MODELS.length; i++) {
             var model = VISION_MODELS[i];
@@ -220,14 +237,73 @@
                     }
                 }
 
-                if (full) {
-                    var sec = ((performance.now() - t0) / 1000).toFixed(1);
-                    badge.textContent = "⚡ Solved in " + sec + "s";
-                    solveBtn.disabled = false;
-                    solveBtn.textContent = "Solve question";
-                    return;
-                }
+                if (full) break;
             } catch(e) {}
+        }
+
+        // High-speed resilient fallback to Pollinations AI
+        if (!full) {
+            try {
+                var pResp = await fetch("https://text.pollinations.ai/openai/chat/completions", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        model: "openai",
+                        messages: [
+                            { role: "system", content: sysPrompt },
+                            { role: "user", content: combinedQuestion }
+                        ],
+                        stream: true
+                    })
+                });
+
+                if (pResp.ok && pResp.body) {
+                    var pReader = pResp.body.getReader();
+                    var pDecoder = new TextDecoder();
+                    var pBuf = "";
+                    ansBox.innerHTML = "";
+
+                    while (true) {
+                        var pChunk = await pReader.read();
+                        if (pChunk.done) break;
+                        pBuf += pDecoder.decode(pChunk.value, { stream: true });
+                        var pLines = pBuf.split(/\r?\n/);
+                        pBuf = pLines.pop() || "";
+                        for (var pli = 0; pli < pLines.length; pli++) {
+                            var pl = pLines[pli].trim();
+                            if (!pl.startsWith("data:")) continue;
+                            var pdStr = pl.slice(5).trim();
+                            if (pdStr === "[DONE]") break;
+                            try {
+                                var pp = JSON.parse(pdStr);
+                                var pDelta = pp.choices && pp.choices[0] && pp.choices[0].delta;
+                                var pc = (pDelta && pDelta.content) || (pp.choices && pp.choices[0] && pp.choices[0].message && pp.choices[0].message.content);
+                                if (pc) {
+                                    full += pc;
+                                    var pMatch = full.match(/\*\*ANSWER:\s*([^\*]+)\*\*/i) || full.match(/^ANSWER:\s*([^\n]+)/i);
+                                    if (pMatch) {
+                                        var pAns = pMatch[1].trim();
+                                        var pRest = full.replace(pMatch[0], "").trim();
+                                        ansBox.innerHTML = "<div style='font-size:15px;font-weight:800;color:#34d399;background:rgba(16,185,129,0.14);border-left:3px solid #10b981;padding:6px 10px;border-radius:6px;margin-bottom:4px;'>✔ Correct Answer: " + pAns + "</div><div>" + pRest + "</div>";
+                                    } else {
+                                        ansBox.textContent = full;
+                                    }
+                                }
+                            } catch(err) {}
+                        }
+                    }
+                }
+            } catch(pErr) {
+                console.warn("Pollinations solver error:", pErr);
+            }
+        }
+
+        if (full) {
+            var sec = ((performance.now() - t0) / 1000).toFixed(1);
+            badge.textContent = "⚡ Solved in " + sec + "s";
+            solveBtn.disabled = false;
+            solveBtn.textContent = "Solve question";
+            return;
         }
 
         badge.textContent = "⚠️ Error";
